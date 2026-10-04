@@ -1,6 +1,6 @@
 const PROJECT_URL='https://tqzmggopevyzxgxijgzi.supabase.co';
 const KEY='sb_publishable_uUlMuJ7qEFXBKWBCeTju8A_f4aSzesa';
-const APP_VERSION='san-juan-conecta-movil-v1.2-mfa-pilot';
+const APP_VERSION='san-juan-conecta-movil-v1.3-mic-pilot';
 const $=id=>document.getElementById(id);
 const LS_PREFIX='sjc_mobile_v10_';
 const state={
@@ -8,7 +8,7 @@ const state={
  refresh:localStorage.getItem(LS_PREFIX+'refresh')||'',
  expires:Number(localStorage.getItem(LS_PREFIX+'expires')||0),
  operator:null,modules:{},deviceOk:false,stream:null,scanning:false,detector:null,engine:'none',
- db:null,busySync:false,lastScan:'',lastScanAt:0,round:null,roster:[],selectedMovementStudent:null,lastSync:null,mfaFactorId:null
+ db:null,busySync:false,lastScan:'',lastScanAt:0,round:null,roster:[],selectedMovementStudent:null,lastSync:null,mfaFactorId:null,voiceRecognition:null,micPermission:'unknown'
 };
 
 function toast(msg,ms=2600){const x=$('toast');x.textContent=msg;x.hidden=false;clearTimeout(x._t);x._t=setTimeout(()=>x.hidden=true,ms)}
@@ -52,7 +52,7 @@ async function verifyRoundsMfa(){
 
 function showLogin(){ $('loginView').classList.add('active');$('appView').classList.remove('active');$('bottomNav').hidden=true }
 function showApp(){ $('loginView').classList.remove('active');$('appView').classList.add('active');$('bottomNav').hidden=false;go('home') }
-function go(name){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));const target=$('screen'+name[0].toUpperCase()+name.slice(1));if(target)target.classList.add('active');document.querySelectorAll('[data-go]').forEach(b=>b.classList.toggle('active',b.dataset.go===name));if(name==='sync')renderQueue();if(name==='rounds')loadRoundContext();}
+function go(name){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));const target=$('screen'+name[0].toUpperCase()+name.slice(1));if(target)target.classList.add('active');document.querySelectorAll('[data-go]').forEach(b=>b.classList.toggle('active',b.dataset.go===name));if(name==='sync')renderQueue();if(name==='rounds'){loadRoundContext();refreshMicStatus();}}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b)go(b.dataset.go)});
 
 async function login(){
@@ -116,7 +116,7 @@ async function loadRoster(){const id=$('roundSection').value;if(!id)return toast
 $('startRoundBtn').onclick=async()=>{const section=$('roundSection').value;if(!section)return toast('Seleccione y cargue un aula.');if(!state.roster.length)await loadRoster();try{const r=await rpc('attendance_start_round',{p_client_round_id:uuid(),p_section_id:section,p_started_at:nowIso()});state.round={id:r.round_id};toast('Ronda iniciada. Todos quedan En aula por defecto.')}catch(e){toast('No se pudo iniciar: '+e.message,4000)}};
 function renderRoster(){$('roundRoster').innerHTML=state.roster.map((s,i)=>`<div class="student-row ${s.uiState==='in_class'?'':'exception'}" data-i="${i}"><div class="student-top"><div><div class="student-name">${esc(s.name)}</div><div class="student-meta">Asistencia: ${esc(s.attendance_status||'sin marcación')}${s.destination?' · '+esc(s.destination):''}</div></div><button class="student-state" data-student-state="${i}">${stateLabel(s.uiState)}</button></div><div class="student-controls"><select data-state-select="${i}"><option value="in_class" ${s.uiState==='in_class'?'selected':''}>En aula</option><option value="other_area" ${s.uiState==='other_area'?'selected':''}>Otra área / justificado</option><option value="verify" ${s.uiState==='verify'?'selected':''}>En verificación</option><option value="absent" ${s.uiState==='absent'?'selected':''}>No ubicado / posible ausencia</option></select><label>Observación</label><div class="voice-row"><textarea data-note="${i}" rows="2" placeholder="Escribe o dicta">${esc(s.note||'')}</textarea><button class="mic" data-voice-index="${i}">🎙</button></div><button class="soft wide" data-save-exception="${i}">Guardar excepción</button></div></div>`).join('')}
 function stateLabel(s){return ({in_class:'EN AULA',other_area:'OTRA ÁREA',verify:'VERIFICAR',absent:'NO UBICADO'})[s]||s}
-document.addEventListener('click',async e=>{let i;if(e.target.matches('[data-student-state]')){i=Number(e.target.dataset.studentState);state.roster[i].uiState=state.roster[i].uiState==='in_class'?'verify':'in_class';renderRoster()}if(e.target.matches('[data-save-exception]')){i=Number(e.target.dataset.saveException);await saveRoundException(i)}if(e.target.matches('[data-voice-index]')){i=Number(e.target.dataset.voiceIndex);const ta=document.querySelector(`[data-note="${i}"]`);dictateTo(ta)}});
+document.addEventListener('click',async e=>{let i;if(e.target.matches('[data-student-state]')){i=Number(e.target.dataset.studentState);state.roster[i].uiState=state.roster[i].uiState==='in_class'?'verify':'in_class';renderRoster()}if(e.target.matches('[data-save-exception]')){i=Number(e.target.dataset.saveException);await saveRoundException(i)}if(e.target.matches('[data-voice-index]')){i=Number(e.target.dataset.voiceIndex);const ta=document.querySelector(`[data-note="${i}"]`);dictateTo(ta,e.target)}});
 document.addEventListener('change',e=>{if(e.target.matches('[data-state-select]')){const i=Number(e.target.dataset.stateSelect);state.roster[i].uiState=e.target.value;renderRoster()}});
 document.addEventListener('input',e=>{if(e.target.matches('[data-note]'))state.roster[Number(e.target.dataset.note)].note=e.target.value});
 async function saveRoundException(i){if(!state.round?.id)return toast('Primero inicia la ronda.');const s=state.roster[i];s.note=(document.querySelector(`[data-note="${i}"]`)?.value||s.note||'').trim();if(s.uiState==='in_class'){if(s.exceptionId){try{await rpc('attendance_resolve_round_exception',{p_exception_id:s.exceptionId,p_resolution_type:'returned_to_class',p_note:s.note});s.exceptionId=null;toast('Marcado nuevamente En aula')}catch(e){toast(e.message)}}return}const map={other_area:'justified_out',verify:'requires_verification',absent:'not_located'};try{const r=await rpc('attendance_round_exception',{p_round_id:state.round.id,p_student_id:s.student_id,p_exception_type:map[s.uiState],p_note:s.note||null});s.exceptionId=r.exception_id;toast(r.auto_resolved?'Excepción registrada y justificada por movimiento':'Excepción registrada')}catch(e){toast('No se pudo guardar: '+e.message,4000)}}
@@ -129,8 +129,89 @@ function selectMovementStudent(s){state.selectedMovementStudent=s;$('movementFor
 $('registerMovementBtn').onclick=async()=>{const s=state.selectedMovementStudent;if(!s)return toast('Seleccione estudiante.');const type=$('movementType').value,dest=$('movementDestination').value.trim(),resp=$('movementResponsible').value.trim(),note=$('movementNote').value.trim();const destination=[dest,resp?('Responsable: '+resp):''].filter(Boolean).join(' · ');try{await rpc('attendance_register_movement',{p_client_event_id:uuid(),p_student_id:s.student_id,p_movement_type:type,p_destination:destination||null,p_reason:note||null,p_started_at:nowIso()});toast('Salida registrada');searchMovement(s.name)}catch(e){toast('No se pudo registrar: '+e.message,4500)}};
 $('endMovementBtn').onclick=async()=>{const s=state.selectedMovementStudent;if(!s)return;try{await rpc('attendance_end_movement',{p_student_id:s.student_id,p_ended_at:nowIso()});toast('Retorno registrado');state.selectedMovementStudent=null;$('movementForm').hidden=true;$('movementSearch').value='';}catch(e){toast('No se pudo registrar retorno: '+e.message,4500)}};
 
-function dictateTo(el){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR)return toast('Este navegador no ofrece dictado de voz. Prueba Chrome actualizado.');const r=new SR();r.lang='es-PE';r.interimResults=false;r.maxAlternatives=1;r.onstart=()=>toast('Escuchando…');r.onerror=e=>toast('Micrófono: '+e.error);r.onresult=e=>{const t=e.results[0][0].transcript.trim();el.value=(el.value?el.value.trim()+' ':'')+t;el.dispatchEvent(new Event('input',{bubbles:true}));toast('Texto dictado')};r.start()}
-document.addEventListener('click',e=>{const b=e.target.closest('[data-voice]');if(b)dictateTo($(b.dataset.voice))});
+function setMicStatus(msg,kind=''){
+ const p=$('roundMicPill'),s=$('roundMicStatus');
+ if(p){p.textContent=kind==='listening'?'ESCUCHANDO':kind==='ok'?'MIC OK':kind==='bad'?'MIC BLOQUEADO':'MIC';p.className='pill '+(kind==='ok'||kind==='listening'?'ok':kind==='bad'?'bad':'warn')}
+ if(s)s.textContent=msg;
+}
+async function micPermissionState(){
+ try{if(!navigator.permissions?.query)return 'unknown';const r=await navigator.permissions.query({name:'microphone'});return r.state||'unknown'}catch{return 'unknown'}
+}
+async function ensureMicPermission(){
+ if(!window.isSecureContext)throw new Error('MIC_REQUIERE_HTTPS');
+ if(!navigator.mediaDevices?.getUserMedia)throw new Error('MIC_NO_DISPONIBLE');
+ const before=await micPermissionState();
+ if(before==='denied'){state.micPermission='denied';throw new Error('MIC_PERMISO_BLOQUEADO')}
+ setMicStatus(before==='granted'?'Micrófono autorizado.':'Solicitando permiso del micrófono…','');
+ let stream;
+ try{
+  stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
+  state.micPermission='granted';
+  setMicStatus('Micrófono autorizado. Toca 🎙 junto a una observación y dicta en español. El audio no se guarda.','ok');
+  return true;
+ }catch(e){
+  state.micPermission='denied';
+  setMicStatus('El navegador no permitió usar el micrófono. Habilita Micrófono para este sitio y vuelve a probar.','bad');
+  throw new Error(e?.name==='NotAllowedError'?'MIC_PERMISO_BLOQUEADO':(e?.name||'MIC_ERROR'));
+ }finally{if(stream)stream.getTracks().forEach(t=>t.stop())}
+}
+async function refreshMicStatus(){
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!SR){setMicStatus('Este navegador no ofrece reconocimiento de voz web. Abre la app con Chrome actualizado; mientras tanto puedes usar el micrófono del teclado.','bad');return}
+ const p=await micPermissionState();state.micPermission=p;
+ if(p==='granted')setMicStatus('Micrófono listo. Toca 🎙 junto a una observación para dictar. El audio no se guarda.','ok');
+ else if(p==='denied')setMicStatus('Permiso de micrófono bloqueado para este sitio. Debes habilitarlo en los permisos del navegador.','bad');
+ else setMicStatus('Micrófono disponible. Pulsa “Activar / probar micrófono” una vez para conceder permiso.','');
+}
+function speechErrorMessage(code){
+ return ({
+  'not-allowed':'Permiso de micrófono denegado.',
+  'service-not-allowed':'El servicio de reconocimiento de voz está bloqueado.',
+  'audio-capture':'No se pudo acceder al micrófono del teléfono.',
+  'no-speech':'No se detectó voz. Acerca el teléfono y vuelve a intentar.',
+  'network':'El reconocimiento de voz necesita conexión en este navegador.',
+  'language-not-supported':'El navegador no admite español Perú para reconocimiento de voz.',
+  'language-unavailable':'El paquete de idioma no está disponible.'
+ })[code]||('Error de micrófono: '+code);
+}
+async function dictateTo(el,button=null){
+ if(!el)return toast('No se encontró el campo de observación.');
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!SR){setMicStatus('Reconocimiento de voz no disponible en este navegador. Usa Chrome actualizado o el micrófono del teclado.','bad');el.focus();return}
+ try{await ensureMicPermission()}catch(e){toast(e.message==='MIC_PERMISO_BLOQUEADO'?'Activa el permiso de micrófono para este sitio.':'No se pudo activar el micrófono.',4200);return}
+ try{if(state.voiceRecognition)state.voiceRecognition.abort()}catch{}
+ const r=new SR();state.voiceRecognition=r;
+ r.lang='es-PE';r.continuous=false;r.interimResults=true;r.maxAlternatives=1;
+ const base=el.value.trim();let finalText='';let heard=false;
+ r.onstart=()=>{if(button)button.textContent='🔴';setMicStatus('Escuchando… habla ahora.','listening');toast('Escuchando…')};
+ r.onspeechstart=()=>{heard=true;setMicStatus('Voz detectada… continúa hablando.','listening')};
+ r.onresult=e=>{
+  let interim='';
+  for(let i=e.resultIndex;i<e.results.length;i++){
+   const t=(e.results[i][0]?.transcript||'').trim();
+   if(e.results[i].isFinal){finalText=(finalText+' '+t).trim();heard=true}else interim=(interim+' '+t).trim();
+  }
+  const live=[base,finalText,interim].filter(Boolean).join(' ').trim();
+  if(live){el.value=live;el.dispatchEvent(new Event('input',{bubbles:true}))}
+ };
+ r.onerror=e=>{
+  const msg=speechErrorMessage(e.error);
+  if(e.error==='not-allowed'||e.error==='service-not-allowed')state.micPermission='denied';
+  setMicStatus(msg,(e.error==='no-speech'||e.error==='network')?'':'bad');toast(msg,4500);
+ };
+ r.onend=()=>{
+  if(button)button.textContent='🎙';
+  if(state.voiceRecognition===r)state.voiceRecognition=null;
+  if(finalText){
+   el.value=[base,finalText].filter(Boolean).join(' ').trim();el.dispatchEvent(new Event('input',{bubbles:true}));
+   setMicStatus('Dictado agregado correctamente. Puedes volver a tocar 🎙 para continuar.','ok');toast('Texto dictado');
+  }else if(heard)setMicStatus('La voz fue detectada, pero no llegó texto final. Vuelve a intentar.','');
+  else if(state.micPermission!=='denied')setMicStatus('Micrófono listo. Toca 🎙 y habla después de ver “ESCUCHANDO”.','ok');
+ };
+ try{r.start()}catch(e){if(button)button.textContent='🎙';state.voiceRecognition=null;setMicStatus('No se pudo iniciar el reconocimiento. Espera un segundo y vuelve a tocar 🎙.','bad');toast('No se pudo iniciar el micrófono.',4000)}
+}
+$('enableRoundMicBtn').onclick=async()=>{try{await ensureMicPermission();toast('Micrófono autorizado. Ahora prueba un botón 🎙.')}catch(e){toast('Revisa el permiso de micrófono del navegador.',4500)}};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-voice]');if(b)dictateTo($(b.dataset.voice),b)});
 
 async function renderQueue(){const q=await updateQueueUI();$('connectionText').textContent=navigator.onLine?'ONLINE':'OFFLINE';$('lastSyncText').textContent=state.lastSync?state.lastSync.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}):'—';$('queueList').innerHTML=q.map(x=>`<div class="queue-item"><b>${esc(x.source||'QR')}</b><br><small>${esc(x.client_event_id)} · ${fmtDateTime(x.captured_at)}</small></div>`).join('')||'<div class="card hint">No hay eventos pendientes.</div>'}
 $('syncNowBtn').onclick=async()=>{if(!state.deviceOk)await verifyDevice(true);await syncQueue();toast('Sincronización revisada')};
