@@ -1,6 +1,6 @@
 const PROJECT_URL='https://tqzmggopevyzxgxijgzi.supabase.co';
 const KEY='sb_publishable_uUlMuJ7qEFXBKWBCeTju8A_f4aSzesa';
-const APP_VERSION='san-juan-conecta-movil-v1.0-pilot';
+const APP_VERSION='san-juan-conecta-movil-v1.2-mfa-pilot';
 const $=id=>document.getElementById(id);
 const LS_PREFIX='sjc_mobile_v10_';
 const state={
@@ -8,7 +8,7 @@ const state={
  refresh:localStorage.getItem(LS_PREFIX+'refresh')||'',
  expires:Number(localStorage.getItem(LS_PREFIX+'expires')||0),
  operator:null,modules:{},deviceOk:false,stream:null,scanning:false,detector:null,engine:'none',
- db:null,busySync:false,lastScan:'',lastScanAt:0,round:null,roster:[],selectedMovementStudent:null,lastSync:null
+ db:null,busySync:false,lastScan:'',lastScanAt:0,round:null,roster:[],selectedMovementStudent:null,lastSync:null,mfaFactorId:null
 };
 
 function toast(msg,ms=2600){const x=$('toast');x.textContent=msg;x.hidden=false;clearTimeout(x._t);x._t=setTimeout(()=>x.hidden=true,ms)}
@@ -24,6 +24,31 @@ async function refreshIfNeeded(){
  try{const d=await parse(await fetch(PROJECT_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:state.refresh})}));state.access=d.access_token;state.refresh=d.refresh_token;state.expires=Date.now()+((d.expires_in||3600)*1000);saveTokens();return true}catch(e){clearTokens();return false}
 }
 async function rpc(name,body={}){if(!(await refreshIfNeeded()))throw new Error('SESIÓN_REQUERIDA');return parse(await fetch(PROJECT_URL+'/rest/v1/rpc/'+name,{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+state.access,'Content-Type':'application/json'},body:JSON.stringify(body)}))}
+function jwtPayload(){try{const p=state.access.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');return JSON.parse(decodeURIComponent(escape(atob(p.padEnd(Math.ceil(p.length/4)*4,'=')))))}catch{return {}}}
+function currentAal(){return jwtPayload().aal||'aal1'}
+async function authRequest(path,opt={}){if(!(await refreshIfNeeded()))throw new Error('SESIÓN_REQUERIDA');const headers={apikey:KEY,Authorization:'Bearer '+state.access,'Content-Type':'application/json',...(opt.headers||{})};return parse(await fetch(PROJECT_URL+'/auth/v1'+path,{...opt,headers}))}
+async function getVerifiedTotp(){const u=await authRequest('/user');const factors=u.factors||[];return factors.find(f=>f.factor_type==='totp'&&f.status==='verified')||null}
+async function showRoundsMfa(){
+ const card=$('mfaRoundsCard');if(!card)return;
+ card.hidden=false;$('mfaRoundsStatus').textContent='Rondas requiere verificación de segundo factor (AAL2). Abre Google Authenticator e ingresa el código de 6 dígitos.';
+ try{const f=await getVerifiedTotp();state.mfaFactorId=f?.id||null;if(!f)$('mfaRoundsStatus').textContent='No se encontró un factor TOTP verificado para esta cuenta.'}catch(e){$('mfaRoundsStatus').textContent='No se pudo consultar MFA: '+e.message}
+}
+async function verifyRoundsMfa(){
+ const code=$('mfaRoundsCode').value.trim();
+ if(!/^\d{6}$/.test(code))return toast('Ingresa los 6 dígitos de Google Authenticator.');
+ const btn=$('mfaRoundsVerifyBtn');btn.disabled=true;
+ try{
+  let factorId=state.mfaFactorId;if(!factorId){const f=await getVerifiedTotp();factorId=f?.id;state.mfaFactorId=factorId||null}
+  if(!factorId)throw new Error('FACTOR_TOTP_NO_ENCONTRADO');
+  const ch=await authRequest('/factors/'+encodeURIComponent(factorId)+'/challenge',{method:'POST',body:'{}'});
+  const vr=await authRequest('/factors/'+encodeURIComponent(factorId)+'/verify',{method:'POST',body:JSON.stringify({challenge_id:ch.id,code})});
+  const s=vr.session||vr;
+  if(s.access_token){state.access=s.access_token;state.refresh=s.refresh_token||state.refresh;state.expires=Date.now()+((s.expires_in||3600)*1000);saveTokens()}
+  $('mfaRoundsCode').value='';$('mfaRoundsCard').hidden=true;$('authPill').textContent='SESIÓN MFA';$('authPill').className='pill ok';toast('MFA verificado. Rondas habilitadas.');
+  await loadRoundContext();
+ }catch(e){$('mfaRoundsStatus').textContent='No se pudo verificar: '+e.message;toast('Código MFA no válido o vencido.',3500)}
+ finally{btn.disabled=false}
+}
 
 function showLogin(){ $('loginView').classList.add('active');$('appView').classList.remove('active');$('bottomNav').hidden=true }
 function showApp(){ $('loginView').classList.remove('active');$('appView').classList.add('active');$('bottomNav').hidden=false;go('home') }
@@ -82,7 +107,10 @@ async function startCamera(){try{if(!state.deviceOk&&!(await verifyDevice(true))
 function stopCamera(){state.scanning=false;if(state.stream)state.stream.getTracks().forEach(t=>t.stop());state.stream=null;$('video').srcObject=null;if($('cameraPill')){$('cameraPill').textContent='DETENIDA';$('cameraPill').className='pill'}}
 $('startCameraBtn').onclick=startCamera;$('stopCameraBtn').onclick=stopCamera;$('manualCaptureBtn').onclick=()=>{const v=$('manualToken').value;$('manualToken').value='';captureToken(v,'manual')};
 
-async function loadRoundContext(){if(!state.operator||state.modules.rounds===false)return;try{const r=await rpc('attendance_round_context');const sel=$('roundSection');sel.innerHTML='<option value="">Seleccione aula</option>'+(r.sections||[]).map(s=>`<option value="${s.section_id}">${esc(s.level_name)} · ${esc(s.grade_name)} ${esc(s.section_name)} · ${esc(s.campus_name)} (${s.expected_count})</option>`).join('')}catch(e){toast('No se pudo cargar aulas: '+e.message)}}
+async function loadRoundContext(){if(!state.operator||state.modules.rounds===false)return;
+ if(currentAal()!=='aal2'){const f=await getVerifiedTotp().catch(()=>null);if(f){state.mfaFactorId=f.id;await showRoundsMfa();const sel=$('roundSection');if(sel)sel.innerHTML='<option value="">MFA requerido</option>';return}}
+ try{const r=await rpc('attendance_round_context');$('mfaRoundsCard').hidden=true;const sel=$('roundSection');sel.innerHTML='<option value="">Seleccione aula</option>'+(r.sections||[]).map(s=>`<option value="${s.section_id}">${esc(s.level_name)} · ${esc(s.grade_name)} ${esc(s.section_name)} · ${esc(s.campus_name)} (${s.expected_count})</option>`).join('')}catch(e){if(/MFA|AAL2|aal2/i.test(e.message||'')){await showRoundsMfa();return}toast('No se pudo cargar aulas: '+e.message)}}
+$('mfaRoundsVerifyBtn').onclick=verifyRoundsMfa;$('mfaRoundsCode').addEventListener('keydown',e=>{if(e.key==='Enter')verifyRoundsMfa()});
 $('loadRosterBtn').onclick=loadRoster;
 async function loadRoster(){const id=$('roundSection').value;if(!id)return toast('Seleccione un aula.');try{const r=await rpc('attendance_round_roster',{p_section_id:id});state.roster=(r.students||[]).map(s=>({...s,uiState:'in_class',exceptionId:null,note:''}));state.round=null;$('roundMeta').textContent=`${r.level_name||''} · ${r.grade_name||''} ${r.section_name||''} · ${r.campus_name||''} · ${r.expected_count||0} estudiantes`;renderRoster()}catch(e){toast('No se pudo cargar ronda: '+e.message)}}
 $('startRoundBtn').onclick=async()=>{const section=$('roundSection').value;if(!section)return toast('Seleccione y cargue un aula.');if(!state.roster.length)await loadRoster();try{const r=await rpc('attendance_start_round',{p_client_round_id:uuid(),p_section_id:section,p_started_at:nowIso()});state.round={id:r.round_id};toast('Ronda iniciada. Todos quedan En aula por defecto.')}catch(e){toast('No se pudo iniciar: '+e.message,4000)}};
