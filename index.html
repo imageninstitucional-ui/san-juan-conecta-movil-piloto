@@ -86,6 +86,12 @@
 
   <div id="screenRounds" class="screen">
     <div class="section-head"><button class="back" data-go="home">‹</button><div><h2>Rondas</h2><p>Todos en aula por defecto</p></div></div>
+    <div id="mfaRoundsCard" class="card" hidden>
+      <h3>Verificación MFA</h3>
+      <p id="mfaRoundsStatus" class="hint">Ingresa el código de Google Authenticator para habilitar Rondas.</p>
+      <label>Código de 6 dígitos</label>
+      <div class="inline"><input id="mfaRoundsCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" placeholder="000000"><button id="mfaRoundsVerifyBtn" class="primary">Verificar</button></div>
+    </div>
     <div class="card">
       <label>Aula / sección</label>
       <select id="roundSection"><option value="">Cargando...</option></select>
