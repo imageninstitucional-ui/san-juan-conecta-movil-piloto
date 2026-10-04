@@ -86,6 +86,12 @@
 
   <div id="screenRounds" class="screen">
     <div class="section-head"><button class="back" data-go="home">‹</button><div><h2>Rondas</h2><p>Todos en aula por defecto</p></div></div>
+    <div class="card">
+      <div class="inline spread"><h3>Dictado de observaciones</h3><span id="roundMicPill" class="pill warn">MIC</span></div>
+      <p id="roundMicStatus" class="hint">Comprobando micrófono…</p>
+      <button id="enableRoundMicBtn" class="soft wide">🎙 Activar / probar micrófono</button>
+      <p class="hint">El reconocimiento convierte tu voz en texto; el audio no se guarda.</p>
+    </div>
     <div id="mfaRoundsCard" class="card" hidden>
       <h3>Verificación MFA</h3>
       <p id="mfaRoundsStatus" class="hint">Ingresa el código de Google Authenticator para habilitar Rondas.</p>
@@ -159,6 +165,6 @@
   <button data-go="movements">↔<small>Movimientos</small></button>
   <button data-go="sync">↻<small>Sync</small></button>
 </nav>
-<script src="app.js"></script>\n<script src="oauth-google.js"></script>
+<script src="app.js?v=20261004-mic13"></script>\n<script src="oauth-google.js?v=20261004-mic13"></script>
 </body>
 </html>
