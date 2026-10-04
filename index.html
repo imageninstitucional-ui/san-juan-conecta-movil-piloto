@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#6b1d3c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>San Juan Conecta Móvil</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="toast" class="toast" hidden></div>
+<header class="topbar">
+  <div class="brand"><img src="icons/icon-192.png" alt=""><div><b>SAN JUAN CONECTA</b><small>MÓVIL · PILOTO CONTROLADO</small></div></div>
+  <div class="top-state"><span id="netPill" class="pill">RED</span><span id="queuePill" class="pill">COLA 0</span></div>
+</header>
+
+<main>
+<section id="loginView" class="view active">
+  <div class="hero-card">
+    <span class="eyebrow">RESTORE TEST</span>
+    <h1>Ingreso institucional</h1>
+    <p>Usa tu cuenta institucional. El aplicativo mostrará únicamente los módulos habilitados para tu rol de asistencia.</p>
+  </div>
+  <div class="card">
+    <label>Correo institucional</label>
+    <input id="email" type="email" autocomplete="username" placeholder="nombre.apellido@cegnesanjuanbautista.edu.pe">
+    <label>Contraseña</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="Contraseña">
+    <button id="loginBtn" class="primary wide">Ingresar</button>
+    <p class="hint">Este piloto no modifica producción. Las pruebas se realizan en RESTORE TEST.</p>
+  </div>
+</section>
+
+<section id="appView" class="view">
+  <div id="screenHome" class="screen active">
+    <div class="hero-card compact">
+      <span class="eyebrow">OPERADOR</span>
+      <h2 id="operatorName">—</h2>
+      <p id="operatorRole">—</p>
+      <div class="status-row"><span id="authPill" class="pill ok">SESIÓN</span><span id="devicePill" class="pill warn">DISPOSITIVO</span><span id="syncPill" class="pill">SYNC</span></div>
+    </div>
+    <div class="card">
+      <h3>Dispositivo móvil</h3>
+      <label>Código del dispositivo</label>
+      <div class="inline"><input id="deviceCode" placeholder="SJB-MOVIL-XXXXXX"><button id="verifyDeviceBtn">Verificar</button></div>
+      <p id="deviceHelp" class="hint">Cada celular debe estar autorizado para su operador. El código queda guardado en este teléfono.</p>
+    </div>
+    <div class="grid2">
+      <button class="action-card" data-go="reader"><b>▣ Escáner QR</b><small>Ingreso continuo</small></button>
+      <button class="action-card" data-go="rounds"><b>✓ Rondas</b><small>Permanencia en aula</small></button>
+      <button class="action-card" data-go="movements"><b>↔ Movimientos</b><small>Salida y retorno</small></button>
+      <button class="action-card" data-go="sync"><b>↻ Sincronización</b><small>Cola offline</small></button>
+    </div>
+    <div class="card">
+      <div class="inline spread"><h3>Módulos habilitados</h3><button id="refreshModulesBtn" class="soft small">Actualizar</button></div>
+      <div id="modulesList" class="chips"></div>
+    </div>
+    <button id="logoutBtn" class="danger wide">Cerrar sesión</button>
+  </div>
+
+  <div id="screenReader" class="screen">
+    <div class="section-head"><button class="back" data-go="home">‹</button><div><h2>Escáner QR</h2><p>Captura continua con cola offline</p></div></div>
+    <div class="card scanner-card">
+      <div class="status-row"><span id="enginePill" class="pill">QR</span><span id="cameraPill" class="pill">CÁMARA</span></div>
+      <video id="video" playsinline muted></video><canvas id="canvas"></canvas>
+      <div class="inline"><button id="startCameraBtn" class="primary">Iniciar cámara</button><button id="stopCameraBtn" class="soft">Detener</button></div>
+      <p id="cameraNote" class="hint">La cámara solo se activa cuando la solicitas.</p>
+    </div>
+    <div class="card">
+      <h3>Contingencia manual</h3>
+      <div class="inline"><input id="manualToken" placeholder="Pegar contenido del QR"><button id="manualCaptureBtn">Registrar</button></div>
+    </div>
+    <div id="scanResult" class="result-card">Esperando lectura.</div>
+  </div>
+
+  <div id="screenRounds" class="screen">
+    <div class="section-head"><button class="back" data-go="home">‹</button><div><h2>Rondas</h2><p>Todos en aula por defecto</p></div></div>
+    <div class="card">
+      <label>Aula / sección</label>
+      <select id="roundSection"><option value="">Cargando...</option></select>
+      <div class="inline"><button id="loadRosterBtn" class="soft">Cargar aula</button><button id="startRoundBtn" class="primary">Iniciar ronda</button></div>
+      <div id="roundMeta" class="hint"></div>
+    </div>
+    <div class="card info-banner"><b>Regla rápida:</b> todos aparecen <b>En aula</b>. Solo toca al estudiante que sea una excepción.</div>
+    <div id="roundRoster" class="roster"></div>
+    <div class="sticky-action"><button id="closeRoundBtn" class="primary wide">Cerrar ronda</button></div>
+  </div>
+
+  <div id="screenMovements" class="screen">
+    <div class="section-head"><button class="back" data-go="home">‹</button><div><h2>Movimientos</h2><p>Salida, destino y retorno</p></div></div>
+    <div class="card">
+      <label>Buscar estudiante</label>
+      <input id="movementSearch" placeholder="Nombre o DNI · búsqueda automática">
+      <div id="movementResults" class="search-results"></div>
+    </div>
+    <div id="movementForm" class="card" hidden>
+      <h3 id="movementStudentName">—</h3><p id="movementStudentMeta" class="hint">—</p>
+      <div id="activeMovementBox" class="active-movement" hidden></div>
+      <div id="newMovementFields">
+        <label>Motivo / destino</label>
+        <select id="movementType">
+          <option value="health">Tópico</option>
+          <option value="psychology">Psicología</option>
+          <option value="pastoral">Pastoral</option>
+          <option value="authorized_permission">Permiso autorizado</option>
+          <option value="library">Biblioteca</option>
+          <option value="institutional_activity">Actividad institucional</option>
+          <option value="restroom">Servicios higiénicos</option>
+          <option value="other_area">Otra área</option>
+        </select>
+        <label>Área / destino específico</label><input id="movementDestination" placeholder="Ej.: Psicología · Anexo">
+        <label>Responsable</label><input id="movementResponsible" placeholder="Nombre del responsable">
+        <label>Observación</label>
+        <div class="voice-row"><textarea id="movementNote" rows="3" placeholder="Escribe o dicta la observación"></textarea><button class="mic" data-voice="movementNote" title="Dictar">🎙</button></div>
+        <button id="registerMovementBtn" class="primary wide">Registrar salida</button>
+      </div>
+      <button id="endMovementBtn" class="primary wide" hidden>Registrar retorno</button>
+    </div>
+  </div>
+
+  <div id="screenSync" class="screen">
+    <div class="section-head"><button class="back" data-go="home">‹</button><div><h2>Sincronización</h2><p>Contingencia y conectividad</p></div></div>
+    <div class="grid3">
+      <div class="stat"><b id="pendingCount">0</b><small>Pendientes</small></div>
+      <div class="stat"><b id="connectionText">—</b><small>Conexión</small></div>
+      <div class="stat"><b id="lastSyncText">—</b><small>Último sync</small></div>
+    </div>
+    <div class="card">
+      <button id="syncNowBtn" class="primary wide">Sincronizar ahora</button>
+      <button id="exportQueueBtn" class="soft wide">Exportar contingencia JSON</button>
+      <p class="hint">Las lecturas QR se guardan primero en el teléfono. Solo se eliminan de la cola cuando el servidor confirma el mismo ID de evento.</p>
+    </div>
+    <div id="queueList" class="queue-list"></div>
+  </div>
+</section>
+</main>
+
+<nav id="bottomNav" class="bottom-nav" hidden>
+  <button data-go="home" class="active">⌂<small>Inicio</small></button>
+  <button data-go="reader">▣<small>QR</small></button>
+  <button data-go="rounds">✓<small>Rondas</small></button>
+  <button data-go="movements">↔<small>Movimientos</small></button>
+  <button data-go="sync">↻<small>Sync</small></button>
+</nav>
+<script src="app.js"></script>
+</body>
+</html>
