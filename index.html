@@ -26,12 +26,19 @@
     <p>Usa tu cuenta institucional. El aplicativo mostrará únicamente los módulos habilitados para tu rol de asistencia.</p>
   </div>
   <div class="card">
-    <label>Correo institucional</label>
-    <input id="email" type="email" autocomplete="username" placeholder="nombre.apellido@cegnesanjuanbautista.edu.pe">
-    <label>Contraseña</label>
-    <input id="password" type="password" autocomplete="current-password" placeholder="Contraseña">
-    <button id="loginBtn" class="primary wide">Ingresar</button>
-    <p class="hint">Este piloto no modifica producción. Las pruebas se realizan en RESTORE TEST.</p>
+    <button id="googleLoginBtn" class="primary wide">G&nbsp;&nbsp; Continuar con Google</button>
+    <p id="oauthStatus" class="hint">Usa la misma cuenta institucional de San Juan Conecta.</p>
+    <details class="login-fallback">
+      <summary>Acceso temporal RESTORE TEST</summary>
+      <div style="margin-top:12px">
+        <label>Correo institucional</label>
+        <input id="email" type="email" autocomplete="username" placeholder="nombre.apellido@cegnesanjuanbautista.edu.pe">
+        <label>Contraseña</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="Contraseña">
+        <button id="loginBtn" class="soft wide">Ingresar temporalmente</button>
+      </div>
+    </details>
+    <p class="hint">Piloto controlado: asistencia móvil trabaja en RESTORE TEST y no modifica producción.</p>
   </div>
 </section>
 
